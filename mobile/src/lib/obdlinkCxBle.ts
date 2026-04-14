@@ -24,6 +24,13 @@ export class ObdlinkCxBleTransport {
   private notifyChar: Characteristic | null = null;
   private rxBuffer = '';
   private pending: Array<{ resolve: (s: string) => void; reject: (e: Error) => void; timeout: NodeJS.Timeout }> = [];
+  private queue: Array<{
+    cmd: string;
+    timeoutMs: number;
+    resolve: (s: string) => void;
+    reject: (e: Error) => void;
+  }> = [];
+  private inFlight = false;
 
   constructor(manager?: BleManager) {
     this.manager = manager ?? new BleManager();
@@ -104,6 +111,29 @@ export class ObdlinkCxBleTransport {
    * Note: For multi-message / streaming cases, we'll add a different API later.
    */
   async send(cmd: string, timeoutMs = 8000): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      this.queue.push({ cmd, timeoutMs, resolve, reject });
+      void this.pump();
+    });
+  }
+
+  private async pump() {
+    if (this.inFlight) return;
+    const next = this.queue.shift();
+    if (!next) return;
+    this.inFlight = true;
+    try {
+      const r = await this.sendNow(next.cmd, next.timeoutMs);
+      next.resolve(r);
+    } catch (e) {
+      next.reject(e as Error);
+    } finally {
+      this.inFlight = false;
+      void this.pump();
+    }
+  }
+
+  private async sendNow(cmd: string, timeoutMs: number): Promise<string> {
     if (!this.device || !this.writeChar) throw new Error('Not connected');
     const payload = Buffer.from(cmd.trim() + '\r', 'utf8');
     const b64 = payload.toString('base64');
@@ -115,7 +145,6 @@ export class ObdlinkCxBleTransport {
       this.pending.push({ resolve, reject, timeout });
     });
 
-    // Most adapters accept write-without-response for throughput.
     await this.manager.writeCharacteristicWithoutResponseForDevice(
       this.device.id,
       OBDLINK_CX_UART_SERVICE,
@@ -136,4 +165,3 @@ export class ObdlinkCxBleTransport {
     await this.send('ATSP0');
   }
 }
-

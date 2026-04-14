@@ -5,6 +5,8 @@ import { BleManager, Device } from 'react-native-ble-plx';
 import { Buffer } from 'buffer';
 
 import { ObdlinkCxBleTransport } from './src/lib/obdlinkCxBle';
+import { OBD } from './src/features/obd/protocol/elmCommands';
+import { parseDtcsFromModeResponse } from './src/features/obd/protocol/dtc';
 
 // Polyfill for libraries that expect global Buffer
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,6 +95,24 @@ export default function App() {
     }
   };
 
+  const scanDtcs = async () => {
+    try {
+      appendLog('> Mode 03 (stored DTCs)');
+      const storedRaw = await transportRef.current?.send(OBD.dtcStored);
+      appendLog(storedRaw ?? '(no response)');
+      const stored = parseDtcsFromModeResponse('03', storedRaw ?? '');
+      appendLog(`Stored: ${stored.length ? stored.join(', ') : '(none)'}`);
+
+      appendLog('> Mode 07 (pending DTCs)');
+      const pendingRaw = await transportRef.current?.send(OBD.dtcPending);
+      appendLog(pendingRaw ?? '(no response)');
+      const pending = parseDtcsFromModeResponse('07', pendingRaw ?? '');
+      appendLog(`Pending: ${pending.length ? pending.join(', ') : '(none)'}`);
+    } catch (e) {
+      appendLog(`Scan failed: ${(e as Error).message}`);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -106,6 +126,8 @@ export default function App() {
         <Button title="Disconnect" onPress={disconnect} disabled={!connectedId} />
         <View style={styles.spacer} />
         <Button title="Test ATI" onPress={sendTest} disabled={!connectedId} />
+        <View style={styles.spacer} />
+        <Button title="Scan DTCs" onPress={scanDtcs} disabled={!connectedId} />
       </View>
 
       <Text style={styles.section}>Devices</Text>
