@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Button, FlatList, Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import type { Device } from 'react-native-ble-plx';
 
 import { useAppStore } from '../app/store';
 import { obdService } from '../services/obdService';
+import { Badge, Card, H2, PrimaryButton, Screen, SecondaryButton, Subtext } from '../ui/components';
 
 export function ConnectScreen() {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -65,32 +66,52 @@ export function ConnectScreen() {
   };
 
   return (
-    <View style={{ flex: 1, padding: 16, gap: 12 }}>
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Button title={connectionStatus === 'scanning' ? 'Scanning…' : 'Scan'} onPress={startScan} disabled={connectionStatus === 'scanning' || connectionStatus === 'connecting'} />
-        <Button title="Disconnect" onPress={disconnect} disabled={connectionStatus !== 'connected'} />
-      </View>
+    <Screen>
+      <Card style={{ gap: 10 }}>
+        <H2>Connection</H2>
+        <Badge
+          label={connectionStatus.toUpperCase()}
+          tone={connectionStatus === 'connected' ? 'success' : connectionStatus === 'connecting' ? 'warning' : 'neutral'}
+        />
+        <Subtext>
+          Tip: start your car (ignition on) and plug in the OBDLink CX before connecting.
+        </Subtext>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <PrimaryButton
+            title={connectionStatus === 'scanning' ? 'Scanning…' : 'Scan for Adapters'}
+            onPress={startScan}
+            disabled={connectionStatus === 'scanning' || connectionStatus === 'connecting'}
+          />
+          <SecondaryButton title="Disconnect" onPress={() => void disconnect()} disabled={connectionStatus !== 'connected'} />
+        </View>
+      </Card>
 
-      <Text style={{ fontWeight: '600' }}>Devices</Text>
-      <FlatList
-        style={{ maxHeight: 220, borderWidth: 1, borderColor: '#eee', borderRadius: 8 }}
-        data={devices}
-        keyExtractor={(d) => d.id}
-        renderItem={({ item }) => (
-          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 10, borderBottomWidth: 1, borderBottomColor: '#f2f2f2' }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: '500' }}>{item.name ?? item.localName ?? 'Unnamed'}</Text>
-              <Text style={{ fontSize: 11, color: '#666' }}>{item.id}</Text>
+      <Card style={{ marginTop: 12, gap: 10, flex: 1 }}>
+        <H2>Adapters Found</H2>
+        <FlatList
+          data={devices}
+          keyExtractor={(d) => d.id}
+          renderItem={({ item }) => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700' }}>{item.name ?? item.localName ?? 'Unnamed'}</Text>
+                <Subtext>{item.id}</Subtext>
+              </View>
+              <SecondaryButton
+                title="Connect"
+                onPress={() => void connect(item)}
+                disabled={connectionStatus === 'connected' || connectionStatus === 'connecting'}
+              />
             </View>
-            <Button title="Connect" onPress={() => void connect(item)} disabled={connectionStatus === 'connected' || connectionStatus === 'connecting'} />
-          </View>
-        )}
-      />
+          )}
+          ListEmptyComponent={<Subtext>No adapters yet. Tap “Scan for Adapters”.</Subtext>}
+        />
+      </Card>
 
-      <Text style={{ fontWeight: '600' }}>Log</Text>
-      <View style={{ flex: 1, borderWidth: 1, borderColor: '#eee', borderRadius: 8, padding: 10 }}>
+      <Card style={{ marginTop: 12, gap: 8 }}>
+        <H2>Log</H2>
         <Text style={{ fontSize: 12 }}>{log || '…'}</Text>
-      </View>
-    </View>
+      </Card>
+    </Screen>
   );
 }
