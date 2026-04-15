@@ -1,3 +1,6 @@
+// Must be first: global polyfills before any other module runs
+import './polyfills';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

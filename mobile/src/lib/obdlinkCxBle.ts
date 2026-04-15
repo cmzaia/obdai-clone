@@ -20,10 +20,11 @@ export class ObdlinkCxBleTransport {
   private manager: BleManager;
   private device: Device | null = null;
   private notifySub: Subscription | null = null;
+  private disconnectSub: Subscription | null = null;
   private writeChar: Characteristic | null = null;
   private notifyChar: Characteristic | null = null;
   private rxBuffer = '';
-  private pending: Array<{ resolve: (s: string) => void; reject: (e: Error) => void; timeout: NodeJS.Timeout }> = [];
+  private pending: Array<{ resolve: (s: string) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }> = [];
   private queue: Array<{
     cmd: string;
     timeoutMs: number;
@@ -32,13 +33,19 @@ export class ObdlinkCxBleTransport {
   }> = [];
   private inFlight = false;
 
-  constructor(manager?: BleManager) {
-    this.manager = manager ?? new BleManager();
+  /** Called when the device disconnects unexpectedly (e.g. cable pulled). */
+  onExternalDisconnect: (() => void) | null = null;
+
+  constructor(manager: BleManager) {
+    this.manager = manager;
   }
 
   destroy() {
     try {
       this.notifySub?.remove();
+    } catch {}
+    try {
+      this.disconnectSub?.remove();
     } catch {}
     try {
       this.manager.destroy();
@@ -49,12 +56,6 @@ export class ObdlinkCxBleTransport {
     const connected = await device.connect({ timeout: 20000 });
     this.device = connected;
     await connected.discoverAllServicesAndCharacteristics();
-
-    this.writeChar = await connected.writeCharacteristicWithResponseForService(
-      OBDLINK_CX_UART_SERVICE,
-      OBDLINK_CX_UART_WRITE_CHAR,
-      Buffer.from('\r').toString('base64')
-    );
 
     // Re-fetch characteristics properly (some stacks return a write result object)
     const services = await connected.services();
@@ -72,6 +73,12 @@ export class ObdlinkCxBleTransport {
       const chunk = Buffer.from(b64, 'base64').toString('utf8');
       this.onData(chunk);
     });
+
+    // Subscribe to unexpected disconnection events so the app can update its UI
+    // and in-flight commands are not left hanging indefinitely.
+    this.disconnectSub = connected.onDisconnected((_error) => {
+      this._handleExternalDisconnect();
+    });
   }
 
   async disconnect() {
@@ -79,14 +86,56 @@ export class ObdlinkCxBleTransport {
     try {
       this.notifySub?.remove();
     } catch {}
+    try {
+      this.disconnectSub?.remove();
+    } catch {}
     this.notifySub = null;
+    this.disconnectSub = null;
     this.writeChar = null;
     this.notifyChar = null;
     const id = this.device.id;
     this.device = null;
+
+    // Drain any in-flight / queued commands so callers don't hang.
+    this._drainQueues(new Error('Disconnected'));
+
     try {
       await this.manager.cancelDeviceConnection(id);
     } catch {}
+  }
+
+  /** Drain all pending and queued commands with the given error. */
+  private _drainQueues(err: Error) {
+    const inflight = this.pending.splice(0);
+    for (const item of inflight) {
+      clearTimeout(item.timeout);
+      item.reject(err);
+    }
+    const queued = this.queue.splice(0);
+    for (const item of queued) {
+      item.reject(err);
+    }
+    this.inFlight = false;
+  }
+
+  /** Handles an unexpected (external) disconnection from the device. */
+  private _handleExternalDisconnect() {
+    try {
+      this.notifySub?.remove();
+    } catch {}
+    try {
+      this.disconnectSub?.remove();
+    } catch {}
+    this.notifySub = null;
+    this.disconnectSub = null;
+    this.writeChar = null;
+    this.notifyChar = null;
+    this.device = null;
+    this.rxBuffer = '';
+
+    this._drainQueues(new Error('Device disconnected unexpectedly'));
+
+    this.onExternalDisconnect?.();
   }
 
   private onData(chunk: string) {
@@ -140,6 +189,9 @@ export class ObdlinkCxBleTransport {
 
     const resp = new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => {
+        // Remove this entry from pending so we don't resolve it after the timeout
+        const idx = this.pending.findIndex((p) => p.timeout === timeout);
+        if (idx !== -1) this.pending.splice(idx, 1);
         reject(new Error(`Timeout waiting for response to: ${cmd}`));
       }, timeoutMs);
       this.pending.push({ resolve, reject, timeout });
