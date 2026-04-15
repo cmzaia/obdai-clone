@@ -24,7 +24,8 @@ export class ObdlinkCxBleTransport {
   private writeChar: Characteristic | null = null;
   private notifyChar: Characteristic | null = null;
   private rxBuffer = '';
-  private pending: Array<{ resolve: (s: string) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }> = [];
+  private nextPendingId = 0;
+  private pending: Map<number, { resolve: (s: string) => void; reject: (e: Error) => void; timeout: ReturnType<typeof setTimeout> }> = new Map();
   private queue: Array<{
     cmd: string;
     timeoutMs: number;
@@ -106,12 +107,14 @@ export class ObdlinkCxBleTransport {
 
   /** Drain all pending and queued commands with the given error. */
   private _drainQueues(err: Error) {
-    const inflight = this.pending.splice(0);
-    for (const item of inflight) {
+    const inflight = this.pending;
+    this.pending = new Map();
+    for (const item of inflight.values()) {
       clearTimeout(item.timeout);
       item.reject(err);
     }
-    const queued = this.queue.splice(0);
+    const queued = this.queue;
+    this.queue = [];
     for (const item of queued) {
       item.reject(err);
     }
@@ -147,8 +150,11 @@ export class ObdlinkCxBleTransport {
       const frame = this.rxBuffer.slice(0, idx);
       this.rxBuffer = this.rxBuffer.slice(idx + 1);
       const cleaned = frame.replace(/\r/g, '').trim();
-      const next = this.pending.shift();
-      if (next) {
+      // Resolve the oldest pending command (FIFO)
+      const firstKey = this.pending.keys().next().value;
+      if (firstKey !== undefined) {
+        const next = this.pending.get(firstKey)!;
+        this.pending.delete(firstKey);
         clearTimeout(next.timeout);
         next.resolve(cleaned);
       }
@@ -188,13 +194,13 @@ export class ObdlinkCxBleTransport {
     const b64 = payload.toString('base64');
 
     const resp = new Promise<string>((resolve, reject) => {
+      const id = this.nextPendingId++;
       const timeout = setTimeout(() => {
-        // Remove this entry from pending so we don't resolve it after the timeout
-        const idx = this.pending.findIndex((p) => p.timeout === timeout);
-        if (idx !== -1) this.pending.splice(idx, 1);
+        // O(1) removal by known key
+        this.pending.delete(id);
         reject(new Error(`Timeout waiting for response to: ${cmd}`));
       }, timeoutMs);
-      this.pending.push({ resolve, reject, timeout });
+      this.pending.set(id, { resolve, reject, timeout });
     });
 
     await this.manager.writeCharacteristicWithoutResponseForDevice(

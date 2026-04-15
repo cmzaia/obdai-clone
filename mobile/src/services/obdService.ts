@@ -8,14 +8,14 @@ class ObdService {
   transport = new ObdlinkCxBleTransport(this.manager);
   device: Device | null = null;
 
-  constructor() {
-    // Destroy the BleManager when the app is backgrounded to release OS resources.
-    AppState.addEventListener('change', (state: AppStateStatus) => {
+  private _appStateSubscription = AppState.addEventListener(
+    'change',
+    (state: AppStateStatus) => {
       if (state === 'background' || state === 'inactive') {
         this.transport.destroy();
       }
-    });
-  }
+    },
+  );
 
   async connect(device: Device) {
     await this.transport.connect(device);
