@@ -8,8 +8,6 @@ export type Dtc = {
 // ELM327 commonly returns DTCs as hex pairs after a header like "43" (stored) or "47" (pending)
 // This parser is intentionally conservative: it extracts hex bytes from the response and decodes per SAE J2012.
 
-const HEX_BYTE = /\b[0-9A-F]{2}\b/gi;
-
 /**
  * ELM327 multi-line responses include ISO-TP line-number prefixes such as
  * "0: 49 02 01 ..." / "1: 57 44 42 ...". Strip these before byte extraction
@@ -22,9 +20,29 @@ function stripElmLineNumbers(raw: string): string {
     .join(' ');
 }
 
+/**
+ * Extract all hex bytes from a response string.
+ *
+ * ELM327 adapters may omit spaces between bytes (e.g. "430301" instead of
+ * "43 03 01"), so we cannot rely on word-boundary anchors (\b).  After
+ * stripping whitespace we parse the hex string two characters at a time.
+ */
+function extractBytes(cleaned: string): number[] {
+  // Remove all whitespace to normalise both spaced and unspaced formats.
+  const hex = cleaned.replace(/\s+/g, '');
+  const bytes: number[] = [];
+  for (let i = 0; i + 1 < hex.length; i += 2) {
+    const chunk = hex.slice(i, i + 2);
+    // Only consume valid hex pairs; stop at any non-hex character.
+    if (!/^[0-9A-Fa-f]{2}$/.test(chunk)) break;
+    bytes.push(parseInt(chunk, 16));
+  }
+  return bytes;
+}
+
 export function parseDtcsFromModeResponse(mode: '03' | '07', raw: string): string[] {
   const cleaned = stripElmLineNumbers(raw);
-  const bytes = (cleaned.match(HEX_BYTE) ?? []).map((b) => parseInt(b, 16));
+  const bytes = extractBytes(cleaned);
   if (bytes.length < 2) return [];
 
   // Find the service response byte: 0x40 + mode

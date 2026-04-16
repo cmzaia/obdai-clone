@@ -2,9 +2,9 @@ import React from 'react';
 import { Pressable, Text, View, type ViewProps } from 'react-native';
 import { theme } from './theme';
 
-export function Screen({ children }: ViewProps) {
+export function Screen({ children, style }: ViewProps) {
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.bg, padding: theme.space.md }}>
+    <View style={[{ flex: 1, backgroundColor: theme.colors.bg, padding: theme.space.md }, style]}>
       {children}
     </View>
   );
