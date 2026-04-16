@@ -10,8 +10,21 @@ export type Dtc = {
 
 const HEX_BYTE = /\b[0-9A-F]{2}\b/gi;
 
+/**
+ * ELM327 multi-line responses include ISO-TP line-number prefixes such as
+ * "0: 49 02 01 ..." / "1: 57 44 42 ...". Strip these before byte extraction
+ * so that multi-frame and multi-DTC responses are parsed correctly.
+ */
+function stripElmLineNumbers(raw: string): string {
+  return raw
+    .split('\n')
+    .map((line) => line.replace(/^\s*[0-9A-F]\s*:\s*/i, ''))
+    .join(' ');
+}
+
 export function parseDtcsFromModeResponse(mode: '03' | '07', raw: string): string[] {
-  const bytes = (raw.match(HEX_BYTE) ?? []).map((b) => parseInt(b, 16));
+  const cleaned = stripElmLineNumbers(raw);
+  const bytes = (cleaned.match(HEX_BYTE) ?? []).map((b) => parseInt(b, 16));
   if (bytes.length < 2) return [];
 
   // Find the service response byte: 0x40 + mode

@@ -4,6 +4,7 @@ import type { Device } from 'react-native-ble-plx';
 
 import { useAppStore } from '../app/store';
 import { obdService } from '../services/obdService';
+import { requestBlePermissions } from '../lib/useBlePermissions';
 import { Badge, Card, H2, PrimaryButton, Screen, SecondaryButton, Subtext } from '../ui/components';
 
 export function ConnectScreen() {
@@ -16,7 +17,13 @@ export function ConnectScreen() {
 
   const appendLog = (line: string) => setLog((prev) => (prev ? prev + '\n' + line : line));
 
-  const startScan = () => {
+  const startScan = async () => {
+    const granted = await requestBlePermissions();
+    if (!granted) {
+      appendLog('Bluetooth permission denied. Please grant permissions in Settings.');
+      return;
+    }
+
     setDevices([]);
     setConnectionStatus('scanning');
     appendLog('Scanning for BLE devices…');
@@ -30,7 +37,8 @@ export function ConnectScreen() {
       if (!device) return;
       const name = device.name ?? device.localName ?? '';
       if (!name) return;
-      if (!/obd/i.test(name)) return;
+      // Accept common OBD adapter brands; remove to show ALL named devices.
+      if (!/(obd|stn|vgate|plx|elm|carista)/i.test(name)) return;
       if (seen.has(device.id)) return;
       seen.set(device.id, device);
       setDevices(Array.from(seen.values()));
@@ -79,7 +87,7 @@ export function ConnectScreen() {
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <PrimaryButton
             title={connectionStatus === 'scanning' ? 'Scanning…' : 'Scan for Adapters'}
-            onPress={startScan}
+            onPress={() => void startScan()}
             disabled={connectionStatus === 'scanning' || connectionStatus === 'connecting'}
           />
           <SecondaryButton title="Disconnect" onPress={() => void disconnect()} disabled={connectionStatus !== 'connected'} />

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Text } from 'react-native';
-import { Buffer } from 'buffer';
 
 import { useAppStore } from '../app/store';
 import { saveScans } from '../app/storage';
@@ -8,9 +7,6 @@ import { obdService } from '../services/obdService';
 import { OBD } from '../features/obd/protocol/elmCommands';
 import { parseDtcsFromModeResponse } from '../features/obd/protocol/dtc';
 import { Badge, Card, H2, PrimaryButton, Screen, Subtext } from '../ui/components';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(global as any).Buffer = Buffer;
 
 export function ScanScreen() {
   const [log, setLog] = useState('');
