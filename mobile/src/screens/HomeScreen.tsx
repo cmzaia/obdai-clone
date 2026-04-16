@@ -16,6 +16,7 @@ export function HomeScreen({ navigation }: Props) {
       <Card style={{ marginTop: 12, gap: 10 }}>
         <PrimaryButton title="Connect to Adapter" onPress={() => navigation.navigate('Connect')} />
         <SecondaryButton title="Run Scan" onPress={() => navigation.navigate('Scan')} />
+        <SecondaryButton title="Live PIDs" onPress={() => navigation.navigate('Live')} />
         <SecondaryButton title="History" onPress={() => navigation.navigate('History')} />
       </Card>
     </Screen>

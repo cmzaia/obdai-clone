@@ -18,14 +18,14 @@ export function ScanScreen() {
 
   const runScan = async () => {
     try {
-      if (!obdService.device) throw new Error('Not connected. Go to Connect first.');
+      if (!obdService.isConnected()) throw new Error('Not connected. Go to Connect first.');
       appendLog('> Mode 03 (stored DTCs)');
-      const storedRaw = await obdService.transport.send(OBD.dtcStored);
+      const storedRaw = await obdService.sendCommand(OBD.dtcStored);
       appendLog(storedRaw);
       const stored = parseDtcsFromModeResponse('03', storedRaw);
 
       appendLog('> Mode 07 (pending DTCs)');
-      const pendingRaw = await obdService.transport.send(OBD.dtcPending);
+      const pendingRaw = await obdService.sendCommand(OBD.dtcPending);
       appendLog(pendingRaw);
       const pending = parseDtcsFromModeResponse('07', pendingRaw);
 
@@ -37,10 +37,24 @@ export function ScanScreen() {
         raw: { stored: storedRaw, pending: pendingRaw },
       };
       addScan(scan);
-      await saveScans([scan, ...scans].slice(0, 50));
+      // Read latest scans from the store at call-time to avoid stale closure.
+      const latestScans = useAppStore.getState().scans;
+      await saveScans(latestScans.slice(0, 50));
       appendLog(`Saved scan. Stored=${stored.length}, Pending=${pending.length}`);
     } catch (e) {
       appendLog(`Scan failed: ${(e as Error).message}`);
+    }
+  };
+
+  const clearDtcs = async () => {
+    try {
+      if (!obdService.isConnected()) throw new Error('Not connected. Go to Connect first.');
+      appendLog('> Mode 04 (clear DTCs)');
+      const resp = await obdService.sendCommand(OBD.clear);
+      appendLog(resp);
+      appendLog('DTCs cleared successfully.');
+    } catch (e) {
+      appendLog(`Clear failed: ${(e as Error).message}`);
     }
   };
 
@@ -50,6 +64,7 @@ export function ScanScreen() {
         <H2>Quick Scan</H2>
         <Subtext>Reads Stored (Mode 03) + Pending (Mode 07) trouble codes.</Subtext>
         <PrimaryButton title="Run Scan" onPress={() => void runScan()} />
+        <PrimaryButton title="Clear DTCs" onPress={() => void clearDtcs()} />
       </Card>
 
       <Card style={{ marginTop: 12, gap: 10 }}>

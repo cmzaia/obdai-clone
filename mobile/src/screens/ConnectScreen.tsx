@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import type { Device } from 'react-native-ble-plx';
 
@@ -10,10 +10,19 @@ import { Badge, Card, H2, PrimaryButton, Screen, SecondaryButton, Subtext } from
 export function ConnectScreen() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [log, setLog] = useState('');
+  const stopScanRef = useRef<(() => void) | null>(null);
 
   const connectionStatus = useAppStore((s) => s.connectionStatus);
   const setConnectionStatus = useAppStore((s) => s.setConnectionStatus);
   const setConnectedDevice = useAppStore((s) => s.setConnectedDevice);
+
+  // Clean up any running scan when the screen unmounts.
+  useEffect(() => {
+    return () => {
+      stopScanRef.current?.();
+      stopScanRef.current = null;
+    };
+  }, []);
 
   const appendLog = (line: string) => setLog((prev) => (prev ? prev + '\n' + line : line));
 
@@ -28,27 +37,35 @@ export function ConnectScreen() {
     setConnectionStatus('scanning');
     appendLog('Scanning for BLE devices…');
     const seen = new Map<string, Device>();
-    obdService.manager.startDeviceScan(null, { allowDuplicates: false }, (error, device) => {
-      if (error) {
-        appendLog(`Scan error: ${error.message}`);
+
+    const stop = obdService.scan(
+      (device) => {
+        const name = device.name ?? device.localName ?? '';
+        if (!name) return;
+        // Accept common OBD adapter brands; remove to show ALL named devices.
+        if (!/(obd|stn|vgate|plx|elm|carista)/i.test(name)) return;
+        if (seen.has(device.id)) return;
+        seen.set(device.id, device);
+        setDevices(Array.from(seen.values()));
+      },
+      (message) => {
+        appendLog(`Scan error: ${message}`);
         setConnectionStatus('disconnected');
-        return;
-      }
-      if (!device) return;
-      const name = device.name ?? device.localName ?? '';
-      if (!name) return;
-      // Accept common OBD adapter brands; remove to show ALL named devices.
-      if (!/(obd|stn|vgate|plx|elm|carista)/i.test(name)) return;
-      if (seen.has(device.id)) return;
-      seen.set(device.id, device);
-      setDevices(Array.from(seen.values()));
-    });
-    setTimeout(() => {
-      try {
-        obdService.manager.stopDeviceScan();
-      } catch {}
+        stopScanRef.current = null;
+      },
+      10000,
+    );
+
+    stopScanRef.current = () => {
+      stop();
       setConnectionStatus('disconnected');
       appendLog('Scan stopped.');
+      stopScanRef.current = null;
+    };
+
+    // Auto-stop after 10 s and update UI.
+    setTimeout(() => {
+      stopScanRef.current?.();
     }, 10000);
   };
 
@@ -112,7 +129,7 @@ export function ConnectScreen() {
               />
             </View>
           )}
-          ListEmptyComponent={<Subtext>No adapters yet. Tap “Scan for Adapters”.</Subtext>}
+          ListEmptyComponent={<Subtext>No adapters yet. Tap "Scan for Adapters".</Subtext>}
         />
       </Card>
 

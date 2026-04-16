@@ -7,6 +7,7 @@ import { ConnectScreen } from '../screens/ConnectScreen';
 import { ScanScreen } from '../screens/ScanScreen';
 import { ScanDetailScreen } from '../screens/ScanDetailScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
+import { LiveScreen } from '../screens/LiveScreen';
 
 import { loadScans } from './storage';
 import { useAppStore } from './store';
@@ -17,6 +18,7 @@ export type RootStackParamList = {
   Scan: undefined;
   ScanDetail: { id: string };
   History: undefined;
+  Live: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -38,6 +40,7 @@ export function Nav() {
         <Stack.Screen name="Scan" component={ScanScreen} options={{ title: 'Scan' }} />
         <Stack.Screen name="ScanDetail" component={ScanDetailScreen} options={{ title: 'Scan Detail' }} />
         <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />
+        <Stack.Screen name="Live" component={LiveScreen} options={{ title: 'Live PIDs' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

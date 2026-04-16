@@ -48,6 +48,13 @@ export class ObdlinkCxBleTransport {
     try {
       this.disconnectSub?.remove();
     } catch {}
+    this.notifySub = null;
+    this.disconnectSub = null;
+    this.writeChar = null;
+    this.notifyChar = null;
+    this.device = null;
+    this.rxBuffer = '';
+    this._drainQueues(new Error('Transport destroyed'));
     try {
       this.manager.destroy();
     } catch {}
@@ -215,11 +222,17 @@ export class ObdlinkCxBleTransport {
 
   async elmInit() {
     // Minimal sane ELM init sequence
-    await this.send('ATZ', 12000);
-    await this.send('ATE0');
-    await this.send('ATL0');
-    await this.send('ATS0');
-    await this.send('ATH0');
-    await this.send('ATSP0');
+    const resetResp = await this.send('ATZ', 12000);
+    if (!resetResp || /error/i.test(resetResp)) {
+      throw new Error(`ELM ATZ failed: "${resetResp}"`);
+    }
+
+    const atCmds = ['ATE0', 'ATL0', 'ATS0', 'ATH0', 'ATSP0'];
+    for (const cmd of atCmds) {
+      const resp = (await this.send(cmd)).trim().toUpperCase();
+      if (resp !== 'OK') {
+        throw new Error(`ELM ${cmd} failed: "${resp}"`);
+      }
+    }
   }
 }
